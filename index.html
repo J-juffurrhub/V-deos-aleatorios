@@ -2,94 +2,664 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=0.2">
-    <title>Gerador de Links Aleatórios do YouTube</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de Streamer v10</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin: 0;
-            background-color: #f0f0f0;
-        }
+        body { font-family: 'Inter', sans-serif; }
+        .progress-bar-fill { transition: width 0.5s ease-in-out; }
+        .chat-message, .live-action-card { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .chat-box { display: flex; flex-direction: column-reverse; }
+        .game-card.active { border-color: #a78bfa; box-shadow: 0 0 15px rgba(167, 139, 250, 0.5); }
+        .donation-message, .raid-message { background-color: rgba(34, 197, 94, 0.1); border-left: 4px solid #22c55e; padding: 4px 8px; border-radius: 4px; }
+        .raid-message { background-color: rgba(167, 139, 250, 0.1); border-left-color: #a78bfa; }
+        .member-badge { color: #facc15; margin-right: 4px; }
+        .verified-badge { color: #38bdf8; margin-left: 8px; }
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .modal-content { background: #1f2937; padding: 2rem; border-radius: 1rem; max-width: 500px; width: 90%; }
 
-        .container {
-            text-align: center;
-            background-color: #fff;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            margin-top: 20px;
-            width: 80%;
-        }
-
-        iframe {
-            display: block;
-            margin: 10px auto;
-            width: 560px;
-            height: 315px;
-            border: none;
-        }
-
-        button {
-            margin-top: 20px;
-            padding: 10px 20px;
-            background-color: #007bff;
-            color: #fff;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-
-        button:hover {
-            background-color: #0056b3;
-        }
+        /* Animações de Gameplay */
+        .game-preview-container { width: 100%; height: 100%; overflow: hidden; position: relative; }
+        @keyframes move-crosshair { 0% { top: 50%; left: 50%; } 25% { top: 40%; left: 70%; } 50% { top: 60%; left: 30%; } 75% { top: 55%; left: 55%; } 100% { top: 50%; left: 50%; } }
+        .preview-valorant_fps::after, .preview-fort-battle::after { content: '+'; font-size: 4rem; color: red; position: absolute; transform: translate(-50%, -50%); animation: move-crosshair 3s infinite linear; }
+        @keyframes build-blocks { 0%, 100% { opacity: 0; transform: scale(0.8) translateY(20px); } 20%, 80% { opacity: 1; transform: scale(1) translateY(0); } }
+        .preview-mineblock::before, .preview-mineblock::after { content: ''; position: absolute; width: 50px; height: 50px; background-color: #a3e635; border: 2px solid black; animation: build-blocks 4s infinite ease-in-out; }
+        .preview-mineblock::before { top: 40%; left: 45%; }
+        .preview-mineblock::after { top: 60%; left: 55%; animation-delay: 2s; background-color: #78716c; }
+        @keyframes rpg-text { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+        .preview-cyberpunk_rpg::after, .preview-horror_mansion::after { content: 'Carregando...'; font-size: 1.5rem; color: #22d3ee; animation: rpg-text 5s infinite; }
+        .preview-default::after { content: '🎮'; font-size: 5rem; }
     </style>
 </head>
-<body>
-    <div class="container">
-        <h1>Vídeos Aleatórios do YouTube</h1>
-        <button onclick="startGeneratingVideos()">Começar a Gerar Vídeos</button>
-        <div id="videos-container"></div>
+<body class="bg-gray-900 text-white flex items-center justify-center min-h-screen p-4">
+
+    <!-- Modals -->
+    <div id="channel-name-modal" class="modal-overlay">
+        <div class="modal-content text-center">
+            <h2 class="text-2xl font-bold mb-4">Cria o teu Canal!</h2>
+            <p class="mb-4 text-gray-400">Qual será o nome do teu canal de streaming?</p>
+            <input type="text" id="channel-name-input" class="bg-gray-700 text-white p-2 rounded w-full mb-4" placeholder="Ex: O MeuCanal">
+            <button id="start-game-button" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">Começar a Carreira</button>
+        </div>
     </div>
+    <div id="random-event-modal" class="modal-overlay hidden">
+        <div id="random-event-content" class="modal-content text-center"></div>
+    </div>
+
+    <div class="max-w-7xl w-full grid grid-cols-1 lg:grid-cols-5 gap-6">
+        
+        <!-- Coluna da Esquerda -->
+        <div class="lg:col-span-2 flex flex-col gap-6">
+            <div class="bg-gray-800 p-6 rounded-xl shadow-lg">
+                <h2 id="channel-name-display" class="text-3xl font-bold mb-4 border-b border-gray-700 pb-2 flex items-center">O Teu Canal</h2>
+                <div class="grid grid-cols-2 gap-4">
+                    <div><label class="text-sm font-medium text-gray-400">Subscritores</label><p id="subscribers-stat" class="text-2xl font-semibold text-purple-400">0</p></div>
+                    <div><label class="text-sm font-medium text-gray-400">Fama</label><p id="fame-stat" class="text-2xl font-semibold text-yellow-400">0</p></div>
+                    <div class="col-span-2"><label class="text-sm font-medium text-gray-400">Dinheiro</label><p id="money-stat" class="text-2xl font-semibold text-green-400">R$ 50,00</p></div>
+                    <div class="col-span-2"><label class="text-sm font-medium text-gray-400 mb-1">Energia</label><div class="w-full bg-gray-700 rounded-full h-6"><div id="energy-bar" class="bg-blue-500 h-6 rounded-full progress-bar-fill text-center text-sm font-bold text-white flex items-center justify-center" style="width: 100%;">100%</div></div></div>
+                    <div id="milestones-container" class="col-span-2 text-sm space-y-1"></div>
+                    <div id="promotion-status" class="col-span-2 text-sm text-cyan-400 hidden"></div>
+                </div>
+            </div>
+            <div id="actions-upgrades-card" class="bg-gray-800 p-6 rounded-xl shadow-lg"></div>
+        </div>
+
+        <!-- Coluna da Direita -->
+        <div class="lg:col-span-3 flex flex-col gap-6">
+            <div class="bg-gray-800 rounded-xl shadow-lg">
+                <div class="flex border-b border-gray-700">
+                    <button data-tab="live" class="tab-button flex-1 p-4 font-bold bg-black rounded-tl-xl">A Tua Live</button>
+                    <button data-tab="explore" class="tab-button flex-1 p-4 font-bold bg-gray-700 hover:bg-gray-600">Explorar</button>
+                </div>
+                <div id="live-tab" class="p-6">
+                    <div class="bg-black rounded-xl shadow-lg flex flex-col h-[600px]">
+                        <div class="flex justify-between items-center border-b border-gray-700 p-4">
+                            <h2 class="text-2xl font-bold">Ao Vivo</h2>
+                            <div class="flex items-center gap-2 text-red-500 font-bold">
+                                <span id="live-indicator" class="relative flex h-3 w-3"></span>
+                                <span id="viewer-count">0</span> espectadores
+                            </div>
+                        </div>
+                        <div id="game-display-container" class="bg-gray-900/50 flex-grow rounded-lg m-4 flex items-center justify-center">
+                            <p id="game-display-text" class="text-4xl font-black text-gray-500">ESCOLHE UM JOGO</p>
+                        </div>
+                        <div class="bg-gray-800 p-4 rounded-b-xl h-56 flex-grow">
+                             <h3 class="font-bold mb-2">Chat da Live</h3>
+                             <div id="chat-container" class="h-full overflow-y-auto pr-2 space-y-2 text-sm chat-box"></div>
+                        </div>
+                    </div>
+                </div>
+                <div id="explore-tab" class="p-6 hidden">
+                    <h2 class="text-2xl font-bold mb-4">Outros Streamers</h2>
+                    <div id="explore-container" class="space-y-4 h-[600px] overflow-y-auto"></div>
+                </div>
+            </div>
+            <div class="bg-gray-800 p-6 rounded-xl shadow-lg">
+                <h2 class="text-2xl font-bold mb-4 border-b border-gray-700 pb-2">Comprar & Selecionar Jogos</h2>
+                <div id="games-container" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
+            </div>
+        </div>
+    </div>
+
     <script>
-        function getRandomString(length) {
-            const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-            let result = '';
-            for (let i = 0; i < length; i++) {
-                result += characters.charAt(Math.floor(Math.random() * characters.length));
-            }
-            return result;
-        }
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- UI Elements ---
+            const ui = {
+                subscribers: document.getElementById('subscribers-stat'), fame: document.getElementById('fame-stat'), money: document.getElementById('money-stat'),
+                energyBar: document.getElementById('energy-bar'), viewerCount: document.getElementById('viewer-count'), gameDisplayContainer: document.getElementById('game-display-container'),
+                chatContainer: document.getElementById('chat-container'), gamesContainer: document.getElementById('games-container'), liveIndicator: document.getElementById('live-indicator'),
+                actionsUpgradesCard: document.getElementById('actions-upgrades-card'), channelNameDisplay: document.getElementById('channel-name-display'),
+                modal: document.getElementById('channel-name-modal'), input: document.getElementById('channel-name-input'), startButton: document.getElementById('start-game-button'),
+                liveTab: document.getElementById('live-tab'), exploreTab: document.getElementById('explore-tab'), exploreContainer: document.getElementById('explore-container'),
+                tabButtons: document.querySelectorAll('.tab-button'),
+                milestonesContainer: document.getElementById('milestones-container'),
+                promotionStatus: document.getElementById('promotion-status'),
+                eventModal: document.getElementById('random-event-modal'),
+                eventContent: document.getElementById('random-event-content'),
+            };
 
-        function getRandomYouTubeLink() {
-            const randomString = getRandomString(11); // IDs do YouTube têm 11 caracteres
-            return `https://www.youtube.com/embed/${randomString}`;
-        }
+            // --- Game State ---
+            let state = {
+                channelName: "O MeuCanal", subscribers: 0, money: 50, energy: 100, fame: 0, members: 0,
+                isBusy: false, isStreaming: false, isVerified: false, membershipUnlocked: false, emojisUnlocked: false,
+                currentGame: null, currentViewers: 0,
+                ownedGames: ['indie_platformer'],
+                otherStreamers: [],
+                statusEffects: { promotion: { active: false, timeLeft: 0 } },
+                streamTimer: null
+            };
+            let gameLoopInterval = null;
 
-        function addRandomVideos() {
-            const container = document.getElementById('videos-container');
-            for (let i = 0; i < 10; i++) {
-                const iframe = document.createElement('iframe');
-                iframe.src = getRandomYouTubeLink();
-                container.appendChild(iframe);
-            }
-        }
-
-        function startGeneratingVideos() {
-            const container = document.getElementById('videos-container');
-            container.innerHTML = ''; // Limpa os vídeos anteriores
-            let count = 0;
-            const interval = setInterval(() => {
-                if (count >= 1000) {
-                    clearInterval(interval);
-                } else {
-                    addRandomVideos();
-                    count += 10;
+            // --- Game Definitions ---
+            const upgrades = {
+                pc: { name: "PC Gamer", description: "Permite jogar jogos mais pesados e melhora a Fama.", level: 0, baseCost: 100, costMultiplier: 2.0 },
+                camera: { name: "Câmera HD", description: "Aumenta o valor e a chance de doações.", level: 0, baseCost: 40, costMultiplier: 1.8 },
+                mic: { name: "Microfone Pro", description: "Atrai mais espectadores para a live.", level: 0, baseCost: 50, costMultiplier: 1.7 },
+                internet: { name: "Internet Fibra", description: "Aumenta ganhos passivos e de doações.", level: 0, baseCost: 80, costMultiplier: 1.9 }
+            };
+            const games = {
+                indie_platformer: { name: "Aventura Indie", subM: 1.0, viewM: 0.8, chat: ["jogo fofinho", "pula!"], cost: 0, pcReq: 0, rating: 3, preview: 'preview-default' },
+                mineblock: { name: "Mineblock", subM: 1.2, viewM: 1.0, chat: ["que construção!", "faz uma casa na árvore"], cost: 20, pcReq: 0, rating: 4, preview: 'preview-mineblock' },
+                among_us_clone: { name: "Among Mates", subM: 1.3, viewM: 1.2, chat: ["quem é o impostor?", "vi o vermelho"], cost: 30, pcReq: 0, rating: 5, preview: 'preview-default' },
+                pixel_valley: { name: "Pixel Valley", subM: 1.1, viewM: 0.9, chat: ["que fazenda linda!", "hora de colher"], cost: 40, pcReq: 1, rating: 4, preview: 'preview-mineblock' },
+                valorant_fps: { name: "Valorant FPS", subM: 0.9, viewM: 1.3, chat: ["CLUTCH!", "que bala!", "nt"], cost: 50, pcReq: 1, rating: 4, preview: 'preview-valorant_fps' },
+                league_of_moba: { name: "League of MOBA", subM: 1.0, viewM: 1.1, chat: ["que gank foi esse?", "só farmando"], cost: 50, pcReq: 1, rating: 3, preview: 'preview-default' },
+                fort_battle: { name: "Fort Battle", subM: 1.1, viewM: 1.4, chat: ["#1 Victory Royale!", "constrói!", "onde vamos cair?"], cost: 100, pcReq: 2, rating: 4, preview: 'preview-fort-battle' },
+                darkest_souls: { name: "Darkest Souls", subM: 1.2, viewM: 1.4, chat: ["VOCÊ MORREU", "não desiste!", "boss difícil"], cost: 150, pcReq: 2, rating: 5, preview: 'preview-rpg' },
+                horror_mansion: { name: "Horror Mansion", subM: 1.4, viewM: 1.6, chat: ["QUE SUSTO!", "não entres aí!", "está atrás de ti!"], cost: 200, pcReq: 3, rating: 5, preview: 'preview-horror_mansion' },
+                cyberpunk_rpg: { name: "Cyberpunk RPG", subM: 1.5, viewM: 1.5, chat: ["que história!", "gráficos insanos!"], cost: 250, pcReq: 3, rating: 5, preview: 'preview-cyberpunk_rpg' },
+            };
+            const randomEvents = [
+                {
+                    question: "Um espectador pergunta: 'Qual foi o primeiro jogo que te marcou?'",
+                    answers: [
+                        { text: "Um clássico de 8-bit!", effect: () => { state.fame += 50; addChatMessage("Sistema", "O chat adorou a tua nostalgia!", "text-green-400"); } },
+                        { text: "Um RPG moderno.", effect: () => { state.fame += 30; } },
+                        { text: "Não me lembro.", effect: () => { state.fame -= 10; addChatMessage("Sistema", "O chat ficou desapontado.", "text-red-400"); } }
+                    ]
+                },
+                {
+                    question: "O teu patrocinador oferece um bónus se jogares com o produto deles em destaque. Aceitas?",
+                    answers: [
+                        { text: "Claro, dinheiro é dinheiro!", effect: () => { state.money += 500; state.fame -= 50; addChatMessage("Sistema", "Ganhaste dinheiro, mas o chat chamou-te de 'vendido'.", "text-yellow-400"); } },
+                        { text: "Não, a minha audiência primeiro.", effect: () => { state.fame += 100; addChatMessage("Sistema", "A tua lealdade foi recompensada com fama!", "text-green-400"); } }
+                    ]
                 }
-            }, 10000); // Adiciona 10 vídeos a cada 10 segundos
-        }
+            ];
+            const firstNames = ["Ana", "Bruno", "Carlos", "Diana", "Edu", "Fabi", "Gus", "Hugo", "Ines", "Jota"];
+            const lastNames = ["Silva", "Souza", "Gamer", "Plays", "Live", "PT", "BR", "Master", "King", "Queen"];
+            const famousStreamers = ["Ninja", "Pokimane", "Gaules", "Alanzoka", "Casimito"];
+            const chatPool = {
+                negative: ["Que jogo chato...", "O áudio está mau.", "Jogas mal.", "Esta live está a bloquear.", "Ninguém vê isto."],
+                neutral: ["Olá.", "Boas.", "Qual o próximo jogo?", "Estou aqui.", "Primeiro."],
+                positive: ["Jogas muito!", "Adoro esta stream!", "Melhor streamer!", "Manda um salve!", "kkkkkkk", "Pog!"],
+                reactions: {
+                    joke_good: ["😂", "kkkkkkk", "Essa foi boa!"],
+                    joke_bad: ["...", "cringe", "😐"],
+                    hype_good: ["POGGERS!", "QUE JOGADA!", "CLIPEM ISSO!"],
+                    hype_bad: ["F", "nt", "Acontece..."]
+                }
+            };
+
+            // --- Initialization ---
+            function init() {
+                state.channelName = ui.input.value.trim() || "O MeuCanal";
+                ui.modal.style.display = 'none';
+                ui.channelNameDisplay.innerHTML = `${state.channelName} <span id="verified-badge-display" class="hidden verified-badge">✔️</span>`;
+                setupActionButtons();
+                setupTabs();
+                createOtherStreamers();
+                gameLoopInterval = setInterval(gameLoop, 1000);
+                updateUI();
+                addChatMessage("Sistema", `Bem-vindo ao Simulador de Streamer, ${state.channelName}!`, "text-yellow-300");
+            }
+
+            function setupActionButtons() {
+                ui.actionsUpgradesCard.innerHTML = `
+                    <div id="main-actions-container">
+                        <h2 class="text-2xl font-bold mb-4 border-b border-gray-700 pb-2">Ações Principais</h2>
+                        <div class="space-y-2 mb-6">
+                            <p class="text-sm text-gray-400">Escolhe a duração da tua live:</p>
+                            <div class="grid grid-cols-3 gap-2">
+                                <button data-duration="15" class="stream-duration-button w-full bg-purple-600 hover:bg-purple-700 p-2 rounded-lg">Rápida<br><span class="text-xs">(-5% Energia)</span></button>
+                                <button data-duration="30" class="stream-duration-button w-full bg-purple-600 hover:bg-purple-700 p-2 rounded-lg">Média<br><span class="text-xs">(-10% Energia)</span></button>
+                                <button data-duration="60" class="stream-duration-button w-full bg-purple-600 hover:bg-purple-700 p-2 rounded-lg">Longa<br><span class="text-xs">(-20% Energia)</span></button>
+                            </div>
+                        </div>
+                        <button id="record-video-button" class="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-md">🎬 Gravar Vídeo</button>
+                        <div class="mt-6 space-y-2">
+                            <button id="promo-button" class="w-full bg-green-700 hover:bg-green-800 p-2 rounded-lg">📢 Pagar Divulgação (R$ 500)</button>
+                            <button id="collab-button" class="w-full bg-orange-600 hover:bg-orange-700 p-2 rounded-lg">⭐ Collab com Famoso (R$ 70.000)</button>
+                        </div>
+                    </div>
+                    <div id="live-actions-container" class="hidden">
+                         <h2 class="text-2xl font-bold mb-4 border-b border-gray-700 pb-2">Ações na Live</h2>
+                         <div class="space-y-4">
+                            <button data-action="joke" class="live-action-button w-full bg-yellow-600 hover:bg-yellow-700 p-3 rounded-lg">😂 Contar Piada (-2% Energia)</button>
+                            <button data-action="hype" class="live-action-button w-full bg-red-600 hover:bg-red-700 p-3 rounded-lg">🔥 Jogada de Efeito (-5% Energia)</button>
+                            <button data-action="interact" class="live-action-button w-full bg-teal-600 hover:bg-teal-700 p-3 rounded-lg">💬 Interagir com Chat (-1% Energia)</button>
+                         </div>
+                    </div>
+                    <div id="upgrades-section">
+                        <h2 class="text-2xl font-bold mb-4 mt-6 border-b border-gray-700 pb-2">Upgrades</h2>
+                        <div id="upgrades-container" class="space-y-4"></div>
+                    </div>`;
+                document.querySelectorAll('.stream-duration-button').forEach(button => button.addEventListener('click', (e) => startStream(parseInt(e.currentTarget.dataset.duration))));
+                document.getElementById('record-video-button').addEventListener('click', recordVideo);
+                document.getElementById('promo-button').addEventListener('click', payForPromotion);
+                document.getElementById('collab-button').addEventListener('click', payForCollab);
+                document.querySelectorAll('.live-action-button').forEach(button => button.addEventListener('click', (e) => performLiveAction(e.target.dataset.action)));
+            }
+            
+            function setupTabs() {
+                ui.tabButtons.forEach(button => {
+                    button.addEventListener('click', () => {
+                        const tab = button.dataset.tab;
+                        ui.liveTab.classList.toggle('hidden', tab !== 'live');
+                        ui.exploreTab.classList.toggle('hidden', tab !== 'explore');
+                        ui.tabButtons.forEach(btn => {
+                            btn.classList.remove('bg-black');
+                            btn.classList.add('bg-gray-700', 'hover:bg-gray-600');
+                        });
+                        button.classList.add('bg-black');
+                        button.classList.remove('bg-gray-700', 'hover:bg-gray-600');
+                    });
+                });
+            }
+            
+            ui.startButton.addEventListener('click', init);
+            ui.input.addEventListener('keyup', (e) => { if (e.key === 'Enter') init(); });
+
+            // --- Game Loop & Core Logic ---
+            function gameLoop() {
+                // Passive Gains
+                if (!state.isBusy) {
+                    state.energy = Math.min(100, state.energy + 0.5); // Slower passive regen
+                    if (state.fame > 0) {
+                        const passiveFame = state.fame * 0.00001;
+                        const passiveMoney = state.subscribers * 0.0001 * (1 + upgrades.internet.level * 0.1);
+                        state.fame += passiveFame;
+                        state.money += passiveMoney;
+                    }
+                }
+                
+                // Status Effect Timer
+                if (state.statusEffects.promotion.active) {
+                    state.statusEffects.promotion.timeLeft--;
+                    if (state.statusEffects.promotion.timeLeft <= 0) {
+                        state.statusEffects.promotion.active = false;
+                        addChatMessage("Sistema", "A tua campanha de divulgação terminou.", "text-cyan-500");
+                    }
+                }
+
+                if (state.isStreaming) streamTick();
+                checkMilestones();
+                updateOtherStreamers();
+                updateUI();
+            }
+
+            function streamTick() {
+                state.energy -= 0.05; // Constant energy drain
+                if (state.energy <= 0) {
+                    endStream();
+                    return;
+                }
+
+                let fameMultiplier = state.statusEffects.promotion.active ? 2 : 1;
+
+                const game = games[state.currentGame];
+                const ratingBonus = 1 + (game.rating - 3) * 0.15;
+                const baseViewers = state.fame * 0.5 * ratingBonus;
+                const micBonus = state.fame * (upgrades.mic.level * 0.05);
+                const randomFactor = (Math.random() - 0.4) * (state.fame + 10);
+                state.currentViewers = Math.max(0, Math.floor((baseViewers + micBonus) * game.viewM + randomFactor));
+
+                const subChance = 0.005 + (Math.log1p(state.fame) / 1000);
+                if (Math.random() < subChance && state.currentViewers > 5) {
+                    const subsGained = Math.max(1, Math.ceil(Math.log1p(state.currentViewers / 50) * game.subM));
+                    state.subscribers += subsGained;
+                    state.fame += (subsGained / (1 + state.fame * 0.001)) * fameMultiplier;
+                    if (subsGained > 0) addChatMessage("Sistema", `+${subsGained} subscritor(es)!`, "text-purple-400");
+                }
+                
+                if (Math.random() < 0.01) triggerRandomEvent();
+                if (Math.random() < 0.001 && state.fame > 1000) triggerRaid();
+                if (Math.random() < 0.0005 && state.fame > 5000) triggerFamousStreamer();
+                if (Math.random() < (0.001 + state.members / 1000) && state.membershipUnlocked) triggerNewMember();
+
+                const chatFrequency = Math.min(0.95, 0.1 + Math.log1p(state.currentViewers) / 15);
+                if (Math.random() < chatFrequency) generateChatMessage();
+            }
+
+            function checkMilestones() {
+                if (state.subscribers >= 100 && !state.emojisUnlocked) {
+                    state.emojisUnlocked = true;
+                    addChatMessage("Sistema", "Conseguiste 100 subs! Desbloqueaste Emojis Personalizados.", "text-yellow-400");
+                }
+                if (state.subscribers >= 10000 && !state.membershipUnlocked) {
+                    state.membershipUnlocked = true;
+                    addChatMessage("Sistema", "Parabéns! Desbloqueaste as Afiliações de Membros!", "text-yellow-400");
+                }
+                if (state.subscribers >= 1000000 && !state.isVerified) {
+                    state.isVerified = true;
+                    document.getElementById('verified-badge-display').classList.remove('hidden');
+                    addChatMessage("Sistema", "INCRÍVEL! O teu canal foi verificado pela plataforma!", "text-blue-400");
+                }
+            }
+            
+            function triggerRandomEvent() {
+                if (state.isBusy) return; // Don't trigger if another modal is up
+                state.isBusy = true;
+                clearTimeout(state.streamTimer); // Pause stream timer
+
+                const event = randomEvents[Math.floor(Math.random() * randomEvents.length)];
+                let buttonsHTML = event.answers.map((answer, index) => 
+                    `<button class="event-answer-button w-full bg-blue-600 hover:bg-blue-700 p-2 rounded-lg mt-2" data-index="${index}">${answer.text}</button>`
+                ).join('');
+
+                ui.eventContent.innerHTML = `
+                    <h3 class="text-xl font-bold mb-4">${event.question}</h3>
+                    <div class="space-y-2">${buttonsHTML}</div>`;
+                
+                ui.eventModal.classList.remove('hidden');
+                document.querySelectorAll('.event-answer-button').forEach(button => {
+                    button.addEventListener('click', (e) => {
+                        const choiceIndex = parseInt(e.target.dataset.index);
+                        event.answers[choiceIndex].effect();
+                        ui.eventModal.classList.add('hidden');
+                        state.isBusy = false;
+                        // Resume stream timer if it was running
+                        if (state.isStreaming) {
+                           const remainingTime = parseInt(ui.eventModal.dataset.remainingTime);
+                           state.streamTimer = setTimeout(endStream, remainingTime * 1000);
+                        }
+                    }, { once: true });
+                });
+            }
+            
+            function triggerRaid() {
+                const raider = state.otherStreamers[Math.floor(Math.random() * state.otherStreamers.length)];
+                const raidViewers = Math.floor(raider.viewers * (0.2 + Math.random() * 0.5));
+                if (raidViewers < 10) return;
+                
+                addChatMessage("Sistema", `${raider.name} está a fazer uma raid com ${raidViewers} espectadores!`, "text-purple-400", false, false, true);
+                state.currentViewers += raidViewers;
+                state.fame += raidViewers * 0.1;
+            }
+
+            function triggerFamousStreamer() {
+                const famous = famousStreamers[Math.floor(Math.random() * famousStreamers.length)];
+                addChatMessage(famous, `A dar uma olhada nesta stream! Bom trabalho, ${state.channelName}!`, 'text-orange-400', true);
+                const viewerBoost = Math.floor(5000 + Math.random() * 10000);
+                state.currentViewers += viewerBoost;
+                state.fame += 500;
+            }
+
+            function triggerNewMember() {
+                const name = generateRandomName();
+                state.members++;
+                state.money += 5;
+                addChatMessage(name, "Acabei de me tornar membro! Adoro o canal!", 'text-yellow-400', true, true);
+            }
+
+            // --- Action Functions ---
+            function startStream(duration) {
+                if (state.isBusy || !state.currentGame) {
+                    addChatMessage("Sistema", "Não podes iniciar a live agora.", "text-red-400");
+                    return;
+                }
+                state.isBusy = true;
+                state.isStreaming = true;
+                addChatMessage("Sistema", `🔴 AO VIVO! Stream de ${games[state.currentGame].name} iniciada!`, "text-red-500");
+                state.streamTimer = setTimeout(endStream, duration * 1000);
+            }
+
+            function endStream() {
+                state.isBusy = false;
+                state.isStreaming = false;
+                state.currentViewers = 0;
+                clearTimeout(state.streamTimer);
+                state.streamTimer = null;
+                addChatMessage("Sistema", "⏹️ Stream finalizada.", "text-gray-400");
+                setTimeout(() => {
+                    ui.chatContainer.innerHTML = '';
+                    addChatMessage("Sistema", "Estás offline.", "text-gray-500");
+                }, 3000);
+            }
+            
+            function recordVideo() {
+                if(state.isBusy || state.energy < 40) {
+                    addChatMessage("Sistema", "Energia insuficiente para gravar!", "text-yellow-500");
+                    return;
+                }
+                state.energy -= 40;
+                state.isBusy = true;
+                addChatMessage("Sistema", "A gravar vídeo... (10 segundos)", "text-sky-400");
+                setTimeout(() => {
+                    const fameGained = 10 + (upgrades.pc.level * 5) + (upgrades.camera.level * 2);
+                    const subsGained = Math.ceil(fameGained / 4);
+                    state.fame += fameGained;
+                    state.subscribers += subsGained;
+                    state.isBusy = false;
+                    addChatMessage("Sistema", `Vídeo publicado! +${fameGained.toFixed(0)} Fama, +${subsGained} Subscritores.`, "text-green-400");
+                }, 10000);
+            }
+
+            function performLiveAction(action) {
+                const actions = { joke: { cost: 2, success: 0.5 }, hype: { cost: 5, success: 0.3 }, interact: { cost: 1, success: 0.9 } };
+                const currentAction = actions[action];
+                if(state.energy < currentAction.cost) { addChatMessage("Sistema", "Energia insuficiente!", "text-yellow-500"); return; }
+                state.energy -= currentAction.cost;
+                const isSuccess = Math.random() < (currentAction.success + (state.fame / 2000));
+
+                if(action === 'joke') {
+                    const reactionPool = isSuccess ? chatPool.reactions.joke_good : chatPool.reactions.joke_bad;
+                    addChatMessage("Sistema", isSuccess ? "A tua piada foi hilariante!" : "Piada má...", isSuccess ? "text-green-400" : "text-red-400");
+                    if(isSuccess) {
+                        state.money += 5 + state.fame * 0.1;
+                        const subsGained = Math.ceil(state.currentViewers * (0.40 * Math.random())); // Up to 40%
+                        state.subscribers += subsGained;
+                        state.fame += subsGained * 1.5;
+                        if (subsGained > 0) addChatMessage("Sistema", `A tua piada atraiu ${subsGained} novos subscritores!`, "text-purple-400");
+                    } else {
+                        state.currentViewers = Math.max(0, state.currentViewers - Math.floor(state.currentViewers * 0.1));
+                    }
+                    for(let i=0; i<3; i++) setTimeout(() => addChatMessage(generateRandomName(), reactionPool[Math.floor(Math.random() * reactionPool.length)]), 500 * i);
+                } else if(action === 'hype') {
+                    const reactionPool = isSuccess ? chatPool.reactions.hype_good : chatPool.reactions.hype_bad;
+                    addChatMessage("Sistema", isSuccess ? "QUE JOGADA! O teu clipe viralizou!" : "A jogada falhou.", isSuccess ? "text-purple-400" : "text-red-400");
+                    if(isSuccess) { 
+                        const subsGained = Math.ceil(state.currentViewers * (0.70 * Math.random())); // Up to 70%
+                        state.subscribers += subsGained; 
+                        state.fame += subsGained * 2.5;
+                        if (subsGained > 0) addChatMessage("Sistema", `A tua jogada épica atraiu ${subsGained} novos subscritores!`, "text-purple-400");
+                    } else {
+                        state.energy -= 5;
+                    }
+                    for(let i=0; i<3; i++) setTimeout(() => addChatMessage(generateRandomName(), reactionPool[Math.floor(Math.random() * reactionPool.length)]), 500 * i);
+                } else if(action === 'interact') {
+                    addChatMessage("Sistema", "Interagiste com o chat.", "text-teal-400");
+                    state.fame += 1 + upgrades.mic.level + (state.emojisUnlocked ? 5 : 0);
+                }
+            }
+            
+            function payForPromotion() {
+                const cost = 500;
+                if (state.money < cost || state.isBusy) return;
+                state.money -= cost;
+                state.statusEffects.promotion.active = true;
+                state.statusEffects.promotion.timeLeft = 180; // 3 minutos
+                addChatMessage("Sistema", "Campanha de divulgação iniciada! Vais ganhar mais fama durante 3 minutos.", "text-cyan-400");
+            }
+
+            function payForCollab() {
+                const cost = 70000; // Preço ajustado
+                if (state.money < cost || state.isBusy) return;
+                state.money -= cost;
+                addChatMessage("Sistema", "A preparar a Collab dos Sonhos...", "text-orange-400");
+                
+                state.currentGame = state.currentGame || 'valorant_fps'; 
+                startStream(60); 
+                setTimeout(() => {
+                    const famous = famousStreamers[Math.floor(Math.random() * famousStreamers.length)];
+                    addChatMessage("Sistema", `A Collab com ${famous} está a começar!`, "text-orange-400", true);
+                    state.currentViewers += 1000000 + Math.random() * 500000;
+                    state.fame += 50000;
+                }, 2000);
+            }
+
+            function buyUpgrade(key) {
+                const upgrade = upgrades[key];
+                const cost = Math.floor(upgrade.baseCost * Math.pow(upgrade.costMultiplier, upgrade.level));
+                if (state.money < cost || state.isBusy) return;
+                state.money -= cost;
+                upgrade.level++;
+                addChatMessage("Sistema", `🚀 Upgrade! ${upgrade.name} agora é nível ${upgrade.level}.`, "text-green-300");
+            }
+
+            function buyGame(gameKey) {
+                if (state.isBusy) return;
+                const game = games[gameKey];
+                if (state.money >= game.cost && !state.ownedGames.includes(gameKey)) {
+                    state.money -= game.cost;
+                    state.ownedGames.push(gameKey);
+                    addChatMessage("Sistema", `Compraste ${game.name}!`, "text-green-400");
+                }
+                updateUI();
+            }
+
+            function selectGame(gameKey) {
+                if (state.isBusy) return;
+                const game = games[gameKey];
+                if (state.ownedGames.includes(gameKey) && upgrades.pc.level >= game.pcReq) {
+                    state.currentGame = gameKey;
+                }
+                updateUI();
+            }
+
+            // --- UI & Helper Functions ---
+            function generateRandomName() {
+                return firstNames[Math.floor(Math.random() * firstNames.length)] + lastNames[Math.floor(Math.random() * lastNames.length)] + Math.floor(Math.random() * 99);
+            }
+
+            function createOtherStreamers() {
+                for (let i = 0; i < 5; i++) {
+                    const gameKeys = Object.keys(games);
+                    state.otherStreamers.push({ name: generateRandomName(), game: gameKeys[Math.floor(Math.random() * gameKeys.length)], viewers: Math.floor(Math.random() * 5000) });
+                }
+            }
+
+            function updateOtherStreamers() {
+                state.otherStreamers.forEach(s => {
+                    s.viewers += Math.floor((Math.random() - 0.5) * 100);
+                    s.viewers = Math.max(0, s.viewers);
+                    if (Math.random() < 0.01) {
+                        const gameKeys = Object.keys(games);
+                        s.game = gameKeys[Math.floor(Math.random() * gameKeys.length)];
+                    }
+                });
+                state.otherStreamers.sort((a, b) => b.viewers - a.viewers);
+            }
+            
+            function addChatMessage(user, message, userColor = 'text-gray-300', isDonation = false, isMember = false, isRaid = false) {
+                const messageEl = document.createElement('p');
+                const colors = ['text-green-400', 'text-blue-400', 'text-purple-400', 'text-yellow-300'];
+                const randomColor = user === "Sistema" ? userColor : colors[Math.floor(Math.random() * colors.length)];
+                let memberBadge = isMember ? '<span class="member-badge">👑</span>' : '';
+                messageEl.innerHTML = `${memberBadge}<strong class="${randomColor}">${user}:</strong> ${message}`;
+                messageEl.className = `chat-message ${isDonation ? 'donation-message' : ''} ${isRaid ? 'raid-message' : ''}`;
+                ui.chatContainer.prepend(messageEl);
+                if (ui.chatContainer.children.length > 100) { ui.chatContainer.removeChild(ui.chatContainer.lastChild); }
+            }
+
+            function generateChatMessage() {
+                const randomUser = generateRandomName();
+                let messagePool;
+                const fameThreshold = state.fame;
+                const gameChatPool = games[state.currentGame].chat;
+                if (fameThreshold < 100) { messagePool = Math.random() < 0.4 ? chatPool.negative : chatPool.neutral; } 
+                else if (fameThreshold < 1000) { messagePool = Math.random() < 0.1 ? chatPool.negative : (Math.random() < 0.4 ? chatPool.neutral : chatPool.positive); } 
+                else { messagePool = chatPool.positive; }
+                if(Math.random() < 0.5 && gameChatPool) { messagePool = messagePool.concat(gameChatPool); }
+                let message = messagePool[Math.floor(Math.random() * messagePool.length)];
+                if (state.emojisUnlocked && Math.random() < 0.3) { message += ` :${state.channelName.substring(0,5)}Hype:`; }
+                addChatMessage(randomUser, message);
+            }
+
+            function updateUI() {
+                if (!document.getElementById('record-video-button')) return; 
+                ui.subscribers.textContent = Math.floor(state.subscribers).toLocaleString('pt-BR');
+                ui.fame.textContent = Math.floor(state.fame).toLocaleString('pt-BR');
+                ui.money.textContent = `R$ ${state.money.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                ui.energyBar.style.width = `${state.energy}%`;
+                ui.energyBar.textContent = `${Math.round(state.energy)}%`;
+                const isBusy = state.isBusy;
+                document.getElementById('main-actions-container').classList.toggle('hidden', state.isStreaming);
+                document.getElementById('live-actions-container').classList.toggle('hidden', !state.isStreaming);
+                document.querySelectorAll('.stream-duration-button').forEach(btn => {
+                    btn.disabled = isBusy || !state.currentGame;
+                    btn.classList.toggle('opacity-50', btn.disabled);
+                    btn.classList.toggle('cursor-not-allowed', btn.disabled);
+                });
+                document.getElementById('record-video-button').disabled = isBusy;
+                document.getElementById('record-video-button').classList.toggle('opacity-50', isBusy);
+                document.getElementById('record-video-button').classList.toggle('cursor-not-allowed', isBusy);
+                ui.viewerCount.textContent = state.currentViewers.toLocaleString('pt-BR');
+                ui.liveIndicator.innerHTML = state.isStreaming ? `<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>` : '';
+                if (state.isStreaming) {
+                    const game = games[state.currentGame];
+                    ui.gameDisplayContainer.innerHTML = `<div class="game-preview-container ${game.preview}"></div>`;
+                } else {
+                    ui.gameDisplayContainer.innerHTML = `<p class="text-4xl font-black text-gray-500">${state.currentGame ? games[state.currentGame].name.toUpperCase() : 'ESCOLHE UM JOGO'}</p>`;
+                }
+                ui.milestonesContainer.innerHTML = '';
+                if(state.emojisUnlocked) ui.milestonesContainer.innerHTML += `<div class="text-green-400">✔️ Emojis Desbloqueados</div>`;
+                if(state.membershipUnlocked) ui.milestonesContainer.innerHTML += `<div class="text-yellow-400">✔️ Afiliações Desbloqueadas</div>`;
+                if(state.statusEffects.promotion.active) {
+                    ui.promotionStatus.classList.remove('hidden');
+                    ui.promotionStatus.textContent = `Divulgação Ativa: ${state.statusEffects.promotion.timeLeft}s`;
+                } else {
+                    ui.promotionStatus.classList.add('hidden');
+                }
+                renderUpgrades();
+                renderGames();
+                renderExplore();
+            }
+
+            function renderGames() {
+                ui.gamesContainer.innerHTML = '';
+                for(const key in games) {
+                    const game = games[key];
+                    const isOwned = state.ownedGames.includes(key);
+                    const canPlay = upgrades.pc.level >= game.pcReq;
+                    const isActive = state.currentGame === key;
+                    let stars = Array(5).fill(0).map((_, i) => i < game.rating ? '⭐' : '<span class="opacity-30">⭐</span>').join('');
+                    let buttonHTML;
+                    if (isOwned) {
+                        buttonHTML = `<button data-key="${key}" class="game-card text-left bg-gray-700 p-4 rounded-lg border-2 ${isActive ? 'active' : 'border-transparent'} hover:border-purple-400 transition-all ${state.isBusy || !canPlay ? 'opacity-50 cursor-not-allowed' : ''}" ${state.isBusy || !canPlay ? 'disabled' : ''}>
+                            <h3 class="font-bold">${game.name}</h3> <div class="text-xs my-1">${stars}</div>
+                            <p class="text-xs ${canPlay ? 'text-green-400' : 'text-red-400'}">${canPlay ? 'JOGAR' : `Requer PC Nv. ${game.pcReq}`}</p>
+                        </button>`;
+                    } else {
+                        const canAfford = state.money >= game.cost;
+                        buttonHTML = `<button data-key="${key}" class="game-card-buy text-left bg-gray-700 p-4 rounded-lg border-2 border-transparent hover:border-green-500 transition-all ${state.isBusy || !canAfford ? 'opacity-50 cursor-not-allowed' : ''}" ${state.isBusy || !canAfford ? 'disabled' : ''}>
+                            <h3 class="font-bold">${game.name}</h3> <div class="text-xs my-1">${stars}</div>
+                            <p class="text-xs text-green-400">Comprar (R$ ${game.cost})</p>
+                        </button>`;
+                    }
+                    ui.gamesContainer.innerHTML += buttonHTML;
+                }
+                document.querySelectorAll('.game-card').forEach(button => button.addEventListener('click', (e) => selectGame(e.currentTarget.dataset.key)));
+                document.querySelectorAll('.game-card-buy').forEach(button => button.addEventListener('click', (e) => buyGame(e.currentTarget.dataset.key)));
+            }
+            
+            function renderUpgrades() {
+                const upgradesContainer = document.getElementById('upgrades-container');
+                if(!upgradesContainer) return;
+                upgradesContainer.innerHTML = '';
+                for (const key in upgrades) {
+                    const upgrade = upgrades[key];
+                    const cost = Math.floor(upgrade.baseCost * Math.pow(upgrade.costMultiplier, upgrade.level));
+                    const canAfford = state.money >= cost;
+                    upgradesContainer.innerHTML += `<div class="bg-gray-700 p-4 rounded-lg flex items-center justify-between gap-4"><div><h3 class="font-bold text-lg">${upgrade.name} <span class="text-sm text-gray-400">(Nível ${upgrade.level})</span></h3><p class="text-xs text-gray-300">${upgrade.description}</p></div><button data-key="${key}" class="buy-upgrade-button flex-shrink-0 font-bold py-2 px-4 rounded-lg transition-all ${canAfford ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 cursor-not-allowed opacity-60'}" ${!canAfford || state.isBusy ? 'disabled' : ''}>Comprar (R$ ${cost.toLocaleString('pt-BR')})</button></div>`;
+                }
+                document.querySelectorAll('.buy-upgrade-button').forEach(button => { button.addEventListener('click', (e) => buyUpgrade(e.target.dataset.key)); });
+            }
+
+            function renderExplore() {
+                ui.exploreContainer.innerHTML = '';
+                state.otherStreamers.forEach(streamer => {
+                    const game = games[streamer.game];
+                    ui.exploreContainer.innerHTML += `<div class="bg-gray-700 p-4 rounded-lg flex justify-between items-center">
+                        <div><h4 class="font-bold">${streamer.name}</h4><p class="text-sm text-gray-400">A jogar: ${game.name}</p></div>
+                        <div class="text-red-500 font-bold">${streamer.viewers.toLocaleString('pt-BR')}</div></div>`;
+                });
+            }
+        });
     </script>
 </body>
 </html>
